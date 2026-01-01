@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=AL Settings
+Exec=python3 %h/src/al_settings.py
+Icon=%h/assets/AL_Assist_icon.png
+Categories=Settings;Utility;

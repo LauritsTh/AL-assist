@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=AL Assistant
+Exec=python3 %h/src/al.py
+Icon=%h/assets/AL_Assist_icon.png
+X-GNOME-Autostart-enabled=true
+Categories=Utility;

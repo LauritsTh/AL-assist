@@ -1,0 +1,15 @@
+{
+  "voice_model": "~/.local/share/piper/en_US-amy-low.onnx",
+  "speed": 1.0,
+  "pitch": 1.0,
+  "language": "en-US",
+  "online_permission_default": "ask",
+  "personality": "neutral",
+  "waveform_color": "#50B4FF",
+  "remember_permissions": true,
+  "app_integrations": {
+    "spotify": "playerctl -p spotify play",
+    "brave": "brave",
+    "openoffice": "soffice --writer"
+  }
+}
