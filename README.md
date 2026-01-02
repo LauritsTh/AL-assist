@@ -25,3 +25,39 @@ AL-assist/
     ├── install_ollama.sh     # Install Ollama + model
     ├── install_tts.sh        # Install Piper TTS
     └── post_install.sh       # Any post-install steps (permissions, icons)
+
+
+
+
+___________________________________
+
+
+
+# AL Assistant
+
+Self-hosted Siri-like assistant for Linux GNOME.
+
+## Features
+- Wake key: Super + Space (hold 3s)
+- Offline-first
+- Explicit online permission
+- Siri-style animation
+- GTK config app
+
+## Install
+```bash
+git clone https://github.com/LauritsTh/AL-assist.git
+cd AL-assist
+bash install.sh
+-----------
+
+
+Requirements
+
+GNOME
+
+Python 3.9+
+
+espeak
+
+Brave, Spotify (optional)

@@ -1,77 +1,81 @@
 #!/usr/bin/env python3
-import os, json, subprocess, time
+import os
+import time
+import json
+import subprocess
+import threading
+import getpass
 from pathlib import Path
 
-CONFIG_PATH = Path.home() / ".config/al_config.json"
+CONFIG_PATH = Path.home() / ".config/al/config.json"
+IDLE_TIMEOUT = 120  # seconds
 
-def load_config():
-    if CONFIG_PATH.exists():
-        return json.load(open(CONFIG_PATH))
-    else:
-        # default fallback
-        return {
-            "voice_model": "~/.local/share/piper/en_US-amy-low.onnx",
-            "speed": 1.0,
-            "pitch": 1.0,
-            "language": "en-US",
-            "online_permission_default": "ask",
-            "personality": "neutral",
-            "waveform_color": "#50B4FF",
-            "remember_permissions": True,
-            "app_integrations": {}
-        }
+class ALAssistant:
+    def __init__(self):
+        self.username = getpass.getuser()
+        self.last_active = time.time()
+        self.running = True
+        self.load_config()
 
-cfg = load_config()
+    def load_config(self):
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH) as f:
+                self.config = json.load(f)
+        else:
+            self.config = {
+                "language": "en-US",
+                "voice": "default",
+                "tone": "neutral",
+                "allow_online": False
+            }
 
-def speak(text):
-    """Use Piper TTS to speak a string"""
-    voice_path = os.path.expanduser(cfg["voice_model"])
-    output_file = "/tmp/al_speak.wav"
-    subprocess.run([
-        "piper",
-        "--model", voice_path,
-        "--speed", str(cfg.get("speed",1.0)),
-        "--pitch", str(cfg.get("pitch",1.0)),
-        "--output_file", output_file
-    ], input=text.encode())
-    subprocess.run(["aplay", output_file])
+    def speak(self, text):
+        subprocess.Popen([
+            "espeak",
+            "-v", self.config["language"],
+            text
+        ])
 
-def open_app(name):
-    """Open an app using integration"""
-    cmd = cfg.get("app_integrations", {}).get(name.lower())
-    if cmd:
-        subprocess.Popen(cmd, shell=True)
-        return True
-    return False
+    def handle_command(self, command: str):
+        self.last_active = time.time()
+        command = command.lower()
 
-def ask_online_permission():
-    if cfg.get("online_permission_default","ask")=="ask":
-        resp = input("AL wants to go online. Allow? [y/N]: ").strip().lower()
-        return resp=="y"
-    return cfg.get("online_permission_default")=="always"
+        if "open email" in command:
+            subprocess.Popen(["xdg-open", "mailto:"])
+            self.speak(f"Opening email for you, {self.username}")
 
-def main():
-    user = os.getenv("USER","User")
-    print(f"Hello {user}, AL is awake!")
-    while True:
-        try:
-            cmd = input("You: ").strip()
-            if cmd.lower() in ["quit","exit"]: break
-            if open_app(cmd):
-                print(f"AL: Opening {cmd}")
-                continue
-            if "search" in cmd.lower() or "google" in cmd.lower():
-                if ask_online_permission():
-                    subprocess.Popen(["brave","https://www.google.com/search?q="+cmd.replace(" ","+")])
-                    print("AL: Opening browser search")
-                else:
-                    print("AL: Online access denied")
-                continue
-            # Placeholder for LLM answer integration
-            print(f"AL ({cfg.get('personality','neutral')}): Sorry, I am still learning to answer '{cmd}'")
-        except KeyboardInterrupt:
-            print("AL: Shutting down")
-            break
+        elif "open browser" in command:
+            subprocess.Popen(["brave-browser"])
+            self.speak("Opening Brave browser")
+
+        elif "play" in command and "spotify" in command:
+            subprocess.Popen(["spotify"])
+            self.speak("Opening Spotify")
+
+        elif "go online" in command:
+            self.speak("May I go online to search?")
+            # UI confirmation handled elsewhere
+
+        elif "sleep" in command:
+            self.speak("Going to sleep")
+            self.running = False
+
+        else:
+            self.speak("I didn't recognize that yet. You can teach me which app to use.")
+
+    def idle_watchdog(self):
+        while self.running:
+            if time.time() - self.last_active > IDLE_TIMEOUT:
+                self.speak("I'm going idle.")
+                self.running = False
+            time.sleep(5)
+
+    def run(self):
+        self.speak(f"Hello {self.username}. AL is ready.")
+        threading.Thread(target=self.idle_watchdog, daemon=True).start()
+
+        while self.running:
+            time.sleep(0.1)
 
 if __name__ == "__main__":
-    main()
+    ALAssistant().run()
