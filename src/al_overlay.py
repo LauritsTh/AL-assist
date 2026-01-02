@@ -43,4 +43,3 @@ if __name__=="__main__":
     win = ALOverlay()
     win.show_all()
     Gtk.main()
-#test
