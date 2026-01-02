@@ -5,18 +5,25 @@ import json
 import subprocess
 import threading
 import getpass
+import platform
 from pathlib import Path
 
 CONFIG_PATH = Path.home() / ".config/al/config.json"
 IDLE_TIMEOUT = 120  # seconds
+
 
 class ALAssistant:
     def __init__(self):
         self.username = getpass.getuser()
         self.last_active = time.time()
         self.running = True
+        self.system = platform.system().lower()
         self.load_config()
+        self.detect_tts()
 
+    # ----------------------------
+    # Config
+    # ----------------------------
     def load_config(self):
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH) as f:
@@ -29,13 +36,45 @@ class ALAssistant:
                 "allow_online": False
             }
 
-    def speak(self, text):
-        subprocess.Popen([
-            "espeak",
-            "-v", self.config["language"],
-            text
-        ])
+    # ----------------------------
+    # Text-to-Speech (platform-aware)
+    # ----------------------------
+    def detect_tts(self):
+        """
+        Decide which TTS backend to use.
+        """
+        if self.system == "darwin":
+            self.tts_backend = "say"
+        elif self.system == "linux":
+            self.tts_backend = "espeak"
+        else:
+            self.tts_backend = None
 
+    def speak(self, text: str):
+        if not text:
+            return
+
+        try:
+            if self.tts_backend == "say":
+                subprocess.Popen(["say", text])
+
+            elif self.tts_backend == "espeak":
+                subprocess.Popen([
+                    "espeak",
+                    "-v", self.config.get("language", "en"),
+                    text
+                ])
+
+            else:
+                print(f"[AL] {text}")
+
+        except FileNotFoundError:
+            print("[AL] TTS backend not found. Falling back to console output.")
+            print(f"[AL] {text}")
+
+    # ----------------------------
+    # Command Handling
+    # ----------------------------
     def handle_command(self, command: str):
         self.last_active = time.time()
         command = command.lower()
@@ -54,15 +93,20 @@ class ALAssistant:
 
         elif "go online" in command:
             self.speak("May I go online to search?")
-            # UI confirmation handled elsewhere
+            # UI confirmation handled in overlay
 
         elif "sleep" in command:
             self.speak("Going to sleep")
             self.running = False
 
         else:
-            self.speak("I didn't recognize that yet. You can teach me which app to use.")
+            self.speak(
+                "I didn't recognize that yet. You can teach me which app to use."
+            )
 
+    # ----------------------------
+    # Idle Watchdog
+    # ----------------------------
     def idle_watchdog(self):
         while self.running:
             if time.time() - self.last_active > IDLE_TIMEOUT:
@@ -70,12 +114,19 @@ class ALAssistant:
                 self.running = False
             time.sleep(5)
 
+    # ----------------------------
+    # Main Loop 
+    # ----------------------------
     def run(self):
         self.speak(f"Hello {self.username}. AL is ready.")
-        threading.Thread(target=self.idle_watchdog, daemon=True).start()
+        threading.Thread(
+            target=self.idle_watchdog,
+            daemon=True
+        ).start()
 
         while self.running:
             time.sleep(0.1)
+
 
 if __name__ == "__main__":
     ALAssistant().run()
