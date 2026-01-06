@@ -115,7 +115,7 @@ class ALAssistant:
             time.sleep(5)
 
     # ----------------------------
-    # Main Loop 
+    # Main Loop - tempurary for development
     # ----------------------------
     def run(self):
         self.speak(f"Hello {self.username}. AL is ready.")
@@ -125,7 +125,13 @@ class ALAssistant:
         ).start()
 
         while self.running:
-            time.sleep(0.1)
+            try:
+                command = input("AL > ").strip()
+                if command:
+                    self.handle_command(command)
+            except (EOFError, KeyboardInterrupt):
+                print("\n[AL] Shutting down.")
+                self.running = False
 
 
 if __name__ == "__main__":
