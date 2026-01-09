@@ -1,26 +1,29 @@
 import json
+import os
+import platform
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".al"
-CONFIG_PATH = CONFIG_DIR / "config.json"
+def get_config_dir():
+    if platform.system() == "Darwin":
+        return Path.home() / "Library" / "Application Support" / "AL"
+    else:
+        return Path.home() / ".config" / "al"
 
+CONFIG_DIR = get_config_dir()
+CONFIG_PATH = CONFIG_DIR / "al_config.json"
 
 DEFAULT_CONFIG = {
-    "language": "en-US",
-    "allow_online": False,
-    "commands": {}   # learned phrases → actions
+    "roles": {},        # e.g. {"music_player": "Spotify"}
+    "apps": {}          # learned app aliases
 }
 
-
 def load_config():
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
+    if not CONFIG_PATH.exists():
+        return DEFAULT_CONFIG.copy()
+    with open(CONFIG_PATH, "r") as f:
+        return json.load(f)
 
-    return DEFAULT_CONFIG.copy()
-
-
-def save_config(config: dict):
+def save_config(config):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)

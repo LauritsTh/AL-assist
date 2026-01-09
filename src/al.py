@@ -1,98 +1,68 @@
-#!/usr/bin/env python3
-import time
-import getpass
-
 from al_config import load_config, save_config
-from al_actions import open_app, speak
-from al_llm import respond
-
-IDLE_TIMEOUT = 120
-
+from al_apps import open_app, open_url
+from al_semantics import normalize_app, split_commands
 
 class ALAssistant:
     def __init__(self):
-        self.username = getpass.getuser()
         self.config = load_config()
 
-        # 🔒 Backward-compatible config migration
-        if "commands" not in self.config:
-            self.config["commands"] = {}
-            save_config(self.config)
+    def speak(self, text):
+        print(f"[AL] {text}")
 
-        self.last_active = time.time()
-        self.running = True
-
-    # ----------------------------
-    # Core Logic
-    # ----------------------------
-    def handle_command(self, text: str):
-        self.last_active = time.time()
-        text = text.strip().lower()
-
-        commands = self.config.get("commands", {})
-
-        # Learned command
-        if text in commands:
-            app = commands[text]
-            speak(f"Opening {app}, {self.username}")
-            open_app(app)
-            return
-
-        # Explicit open
-        if text.startswith("open "):
-            app = text.replace("open ", "").strip()
-            speak(f"Opening {app}")
-            open_app(app)
-            return
-
-        # Learning trigger
-        if "play" in text or "open" in text:
-            self.learn_command(text)
-            return
-
-        # Conversation fallback
-        speak(respond(text))
-
-    # ----------------------------
-    # Learning
-    # ----------------------------
-    def learn_command(self, phrase: str):
-        speak("Which app should I use?")
-        app = input("APP > ").strip()
-
-        if not app:
-            speak("Okay, skipping.")
-            return
-
-        self.config["commands"][phrase] = app
-        save_config(self.config)
-
-        speak(f"Learned. I will use {app} for that.")
-
-    # ----------------------------
-    # Idle Watchdog
-    # ----------------------------
-    def idle_check(self):
-        if time.time() - self.last_active > IDLE_TIMEOUT:
-            speak("Going idle.")
-            self.running = False
-
-    # ----------------------------
-    # Main Loop
-    # ----------------------------
     def run(self):
-        speak("AL is ready.")
-
-        while self.running:
+        self.speak("AL is ready.")
+        while True:
             try:
-                self.idle_check()
                 command = input("AL > ").strip()
-                if command:
-                    self.handle_command(command)
-            except (KeyboardInterrupt, EOFError):
-                speak("Goodbye.")
+                if not command:
+                    continue
+                if command in ("exit", "quit"):
+                    self.speak("Goodbye.")
+                    break
+
+                for part in split_commands(command):
+                    self.handle_command(part)
+
+            except KeyboardInterrupt:
+                self.speak("Goodbye.")
                 break
 
+    def handle_command(self, text):
+        lower = text.lower()
+
+        if lower.startswith("open "):
+            self.handle_open(text)
+        elif lower.startswith("play"):
+            self.handle_play(text)
+        elif "www." in text or ".com" in text:
+            open_url(text)
+        else:
+            self.speak("I didn't understand that yet.")
+
+    def handle_open(self, text):
+        name = text.replace("open", "", 1).strip()
+        app = normalize_app(name)
+
+        if open_app(app):
+            self.speak(f"Opening {app}")
+        else:
+            self.speak(f"Unable to find application named '{name}'")
+
+    def handle_play(self, text):
+        role = "music_player"
+        app = self.config["roles"].get(role)
+
+        if not app:
+            self.speak("Which app should I use for music?")
+            app = input("APP > ").strip()
+            if not app:
+                return
+            self.config["roles"][role] = app
+            save_config(self.config)
+            self.speak(f"Got it. {app} is your music app.")
+
+        self.speak(f"Opening {app}")
+        open_app(app)
 
 if __name__ == "__main__":
     ALAssistant().run()
