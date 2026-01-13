@@ -1,22 +1,23 @@
-import subprocess
 import platform
-import webbrowser
+import subprocess
 
-def open_app(app_name):
-    system = platform.system()
+SYSTEM = platform.system().lower()
 
-    try:
-        if system == "Darwin":
-            subprocess.Popen(["open", "-a", app_name])
-        elif system == "Linux":
-            subprocess.Popen([app_name])
-        else:
-            raise RuntimeError("Unsupported OS")
-        return True
-    except Exception:
-        return False
+def open_app(name):
+    if SYSTEM == "darwin":
+        subprocess.run([
+            "osascript",
+            "-e",
+            f'tell application "{name}" to activate'
+        ], check=False)
+    elif SYSTEM == "linux":
+        subprocess.run(["xdg-open", name], check=False)
 
 def open_url(url):
     if not url.startswith("http"):
         url = "https://" + url
-    webbrowser.open(url)
+
+    subprocess.run(
+        ["open" if SYSTEM == "darwin" else "xdg-open", url],
+        check=False
+    )
