@@ -1,102 +1,138 @@
 import time
 import platform
 import subprocess
+import re
+import al_media
 
-from al_config import load_config, save_config
-from al_apps import open_app, open_url_from_text
-from al_semantics import normalize_app, split_commands
 
-IDLE_SECONDS = 120
+from al_apps import open_app, open_url
+import al_media
+
+IDLE_TIMEOUT = 120
+
+ALIASES = {
+    "chrome": "Google Chrome",
+    "google chrome": "Google Chrome",
+    "brave": "Brave Browser",
+    "spotify": "Spotify",
+    "browser": "Google Chrome"
+}
+
 
 class ALAssistant:
     def __init__(self):
-        self.config = load_config()
-        self.last_activity = time.time()
+        self.system = platform.system().lower()
+        self.last_active = time.time()
+        self.running = True
 
-    # -----------------------
-    # Voice + output
-    # -----------------------
+    # -------------------------
+    # Utilities
+    # -------------------------
+
     def speak(self, text):
         print(f"[AL] {text}")
-        system = platform.system()
         try:
-            if system == "Darwin":
-                subprocess.Popen(["say", text])
-            elif system == "Linux":
-                subprocess.Popen(["espeak", text])
+            if self.system == "darwin":
+                subprocess.run(["say", text], check=False)
+            elif self.system == "linux":
+                subprocess.run(["espeak", text], check=False)
         except Exception:
             pass
 
-    # -----------------------
+    def normalize(self, text):
+        text = text.lower().strip()
+        text = re.sub(r"[^\w\s.:/]", "", text)  # remove odd chars
+        text = re.sub(r"\s+", " ", text)       # normalize spaces
+        return text
+
+    def resolve(self, name):
+        return ALIASES.get(name, name)
+
+    # -------------------------
+    # Command handling
+    # -------------------------
+
+    def handle(self, raw_text):
+        self.last_active = time.time()
+
+        text = self.normalize(raw_text)
+        print(f"[DEBUG] parsed command = '{text}'")
+
+        # --- OPEN ---
+        if text.startswith("open"):
+            target = text.replace("open", "", 1).strip()
+
+            if "go to" in target:
+                app, url = target.split("go to", 1)
+                app = self.resolve(app.strip())
+                url = url.strip()
+                self.speak(f"Opening {app}")
+                open_app(app)
+                self.speak(f"Opening {url}")
+                open_url(url)
+            else:
+                app = self.resolve(target)
+                self.speak(f"Opening {app}")
+                open_app(app)
+            return
+
+        # --- PLAY ---
+        
+        if text.startswith("play"):
+            self.speak("Playing music")
+            open_app("Spotify")
+            time.sleep(1.2)          # Spotify MUST be ready
+            al_media.play()          # <-- NOT toggle
+            return
+
+
+        # --- MEDIA CONTROLS ---
+        # --- MEDIA CONTROLS ---
+        if text in ("pause", "stop"):
+            self.speak("Paused")
+            al_media.pause()
+            return
+
+        if text in ("resume", "continue"):
+            self.speak("Playing")
+            al_media.play()
+            return
+
+        if text in ("next", "skip"):
+            self.speak("Next track")
+            al_media.next_track()
+            return
+
+        if text in ("previous", "back"):
+            self.speak("Previous track")
+            al_media.previous_track()
+            return
+
+
+        # --- FALLBACK ---
+        self.speak("I can open apps and control media.")
+
+    # -------------------------
     # Main loop
-    # -----------------------
+    # -------------------------
+
     def run(self):
         self.speak("AL is ready.")
 
-        while True:
-            if time.time() - self.last_activity > IDLE_SECONDS:
+        while self.running:
+            if time.time() - self.last_active > IDLE_TIMEOUT:
                 self.speak("Going idle.")
-                self.last_activity = time.time()
-
-            try:
-                command = input("AL > ").strip()
-                self.last_activity = time.time()
-
-                if not command:
-                    continue
-                if command in ("exit", "quit"):
-                    self.speak("Goodbye.")
-                    break
-
-                for part in split_commands(command):
-                    self.handle_command(part)
-
-            except KeyboardInterrupt:
-                self.speak("Goodbye.")
                 break
 
-    # -----------------------
-    # Intent routing
-    # -----------------------
-    def handle_command(self, text):
-        lower = text.lower()
+            try:
+                cmd = input("AL > ")
+                if cmd.strip():
+                    self.handle(cmd)
+            except (EOFError, KeyboardInterrupt):
+                break
 
-        if lower.startswith("open "):
-            self.handle_open(text)
-        elif lower.startswith("play"):
-            self.handle_play()
-        elif open_url_from_text(text):
-            self.speak("Opening website.")
-        else:
-            self.speak("I didn't understand that yet.")
+        self.speak("Goodbye.")
 
-    # -----------------------
-    # Actions
-    # -----------------------
-    def handle_open(self, text):
-        name = text.replace("open", "", 1).strip()
-        app = normalize_app(name)
-
-        if open_app(app):
-            self.speak(f"Opening {app}")
-        else:
-            self.speak(f"Unable to find application named {name}")
-
-    def handle_play(self):
-        role = "music_player"
-        app = self.config["roles"].get(role)
-
-        if not app:
-            self.speak("Which app should I use for music?")
-            app = input("APP > ").strip()
-            if not app:
-                return
-            self.config["roles"][role] = app
-            save_config(self.config)
-            self.speak(f"Got it. {app} is your music app.")
-
-        self.speak(f"Opening {app}. I can't control playback yet.")
-        open_app(app)
 
 if __name__ == "__main__":
     ALAssistant().run()

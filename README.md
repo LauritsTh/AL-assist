@@ -27,7 +27,8 @@ AL-assist/
     └── post_install.sh       # Any post-install steps (permissions, icons)
 
 
-
+On Linux, make sure this exists
+sudo apt install playerctl
 
 ___________________________________
 
