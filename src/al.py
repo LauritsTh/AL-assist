@@ -6,7 +6,7 @@ import urllib.parse
 import difflib
 import os
 
-from al_apps import open_app, open_url, close_app
+from al_apps import open_app, open_url, close_app, open_url_in_app
 import al_media
 
 IDLE_TIMEOUT = 120
@@ -16,7 +16,7 @@ ALIASES = {
     "google chrome": "Google Chrome",
     "brave": "Brave Browser",
     "spotify": "Spotify",
-    "browser": "Google Chrome"
+    "browser": "Google Chrome",
 }
 
 COMMON_CORRECTIONS = {
@@ -26,6 +26,17 @@ COMMON_CORRECTIONS = {
     "apotify": "spotify",
 }
 
+NUMBER_WORDS = {
+    "once": 1,
+    "twice": 2,
+    "thrice": 3,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+}
+
 
 class ALAssistant:
     def __init__(self):
@@ -33,9 +44,18 @@ class ALAssistant:
         self.last_active = time.time()
         self.running = True
 
+        # ---- CONTEXT MEMORY ----
+        self.last_app = None
+        self.last_search = None
+        self.last_media_action = None
+
     # -------------------------
     # Utilities
     # -------------------------
+
+    def touch(self):
+        """Update activity timestamp ONLY when something meaningful happens"""
+        self.last_active = time.time()
 
     def speak(self, text):
         print(f"[AL] {text}")
@@ -54,134 +74,168 @@ class ALAssistant:
         return text
 
     def correct_typos(self, text):
-        words = text.split()
-        corrected = []
-        for w in words:
-            corrected.append(COMMON_CORRECTIONS.get(w, w))
-        return " ".join(corrected)
+        return " ".join(COMMON_CORRECTIONS.get(w, w) for w in text.split())
 
     def resolve_app(self, name):
-        name = name.strip()
         if name in ALIASES:
             return ALIASES[name]
-
-        close_match = difflib.get_close_matches(name, ALIASES.keys(), n=1, cutoff=0.75)
-        if close_match:
-            return ALIASES[close_match[0]]
-
+        match = difflib.get_close_matches(name, ALIASES.keys(), n=1, cutoff=0.75)
+        if match:
+            return ALIASES[match[0]]
         return name
 
-    def expand_repetitions(self, text):
-        match = re.match(r"(\d+)\s+(.*)", text)
-        if match:
-            count = min(int(match.group(1)), 10)
-            return [match.group(2)] * count
-        return [text]
-
-    def clear_screen(self):
-        os.system("clear" if self.system != "windows" else "cls")
+    def extract_count(self, text):
+        words = text.split()
+        count = 1
+        for w in words:
+            if w.isdigit():
+                count = int(w)
+                words.remove(w)
+                break
+            if w in NUMBER_WORDS:
+                count = NUMBER_WORDS[w]
+                words.remove(w)
+                break
+        return " ".join(words), max(1, min(count, 10))
 
     # -------------------------
     # Command handling
     # -------------------------
 
     def handle(self, raw_text):
-        self.last_active = time.time()
+        text = self.correct_typos(self.normalize(raw_text))
+        text, count = self.extract_count(text)
 
-        text = self.normalize(raw_text)
-        text = self.correct_typos(text)
+        print(f"[DEBUG] parsed command = '{text}', count={count}")
 
-        print(f"[DEBUG] parsed command = '{text}'")
+        # --- EXIT ---
+        if text in ("exit", "quit", "bye"):
+            self.touch()
+            self.running = False
+            self.speak("Goodbye.")
+            return
 
         # --- CLEAR ---
         if text == "clear":
-            self.clear_screen()
+            self.touch()
+            os.system("clear" if self.system != "windows" else "cls")
             return
 
-        # --- EXIT AL ---
-        if text in ("exit", "quit", "bye"):
-            self.speak("Goodbye.")
-            self.running = False
+        # --- SEARCH FOR (contextual)  ✅ NEW ---
+        if text.startswith("search for"):
+            query = text.replace("search for", "", 1).strip()
+            if not self.last_app:
+                self.speak("Which browser should I use?")
+                return
+
+            self.last_search = (
+                f"https://www.google.com/search?q="
+                f"{urllib.parse.quote_plus(query)}"
+            )
+
+            self.touch()
+            self.speak(f"Searching for {query}")
+            open_url_in_app(self.last_app, self.last_search)
             return
 
-        # --- CLOSE APP ---
-        if text.startswith(("close", "quit")):
-            target = text.replace("close", "").replace("quit", "").strip()
+        # --- SEARCH AGAIN ---
+        if text in ("search again", "search it again"):
+            if self.last_search and self.last_app:
+                self.touch()
+                self.speak("Searching again")
+                for _ in range(count):
+                    open_url_in_app(self.last_app, self.last_search)
+            else:
+                self.speak("Nothing to search again.")
+            return
+
+        # --- CLOSE ---
+        if text.startswith("close"):
+            target = text.replace("close", "", 1).strip() or self.last_app
             if not target:
                 self.speak("Close what?")
                 return
 
             app = self.resolve_app(target)
+            self.touch()
+            self.last_app = app
             self.speak(f"Closing {app}")
             close_app(app)
             return
 
-        # --- OPEN / GO TO ---
+        # --- OPEN / OPEN + SEARCH ---
         if text.startswith(("open", "go to")):
-            target = text.replace("open", "", 1).replace("go to", "", 1).strip()
+            target = (
+                text.replace("open", "", 1)
+                .replace("go to", "", 1)
+                .strip()
+            )
 
-            # search
             if "search for" in target:
                 app_part, query = target.split("search for", 1)
                 app = self.resolve_app(app_part.replace("and", "").strip())
                 query = query.strip()
 
+                self.last_app = app
+                self.last_search = (
+                    f"https://www.google.com/search?q="
+                    f"{urllib.parse.quote_plus(query)}"
+                )
+
+                self.touch()
                 self.speak(f"Opening {app}")
                 open_app(app)
-
-                encoded = urllib.parse.quote_plus(query)
-                url = f"https://www.google.com/search?q={encoded}"
                 self.speak(f"Searching for {query}")
-                open_url(url)
-                return
-
-            # go to url
-            if "go to" in target:
-                app_part, url = target.split("go to", 1)
-                app = self.resolve_app(app_part.replace("and", "").strip())
-                url = url.strip()
-
-                self.speak(f"Opening {app}")
-                open_app(app)
-                self.speak(f"Opening {url}")
-                open_url(url)
+                open_url_in_app(app, self.last_search)
                 return
 
             app = self.resolve_app(target)
+            self.touch()
+            self.last_app = app
             self.speak(f"Opening {app}")
             open_app(app)
             return
 
         # --- PLAY MUSIC ---
         if text.startswith("play"):
+            self.touch()
             self.speak("Playing music")
             open_app("Spotify")
             time.sleep(1.2)
             al_media.play()
+            self.last_media_action = al_media.play
             return
 
         # --- MEDIA CONTROLS ---
         if text in ("pause", "stop"):
-            self.speak("Paused")
-            al_media.pause()
+            self.touch()
+            for _ in range(count):
+                al_media.pause()
+            self.last_media_action = al_media.pause
             return
 
         if text in ("resume", "continue"):
-            self.speak("Playing")
-            al_media.play()
+            self.touch()
+            for _ in range(count):
+                al_media.play()
+            self.last_media_action = al_media.play
             return
 
         if text in ("next", "skip"):
-            self.speak("Next track")
-            al_media.next_track()
+            self.touch()
+            for _ in range(count):
+                al_media.next_track()
+            self.last_media_action = al_media.next_track
             return
 
         if text in ("previous", "back"):
-            self.speak("Previous track")
-            al_media.previous_track()
+            self.touch()
+            for _ in range(count):
+                al_media.previous_track()
+            self.last_media_action = al_media.previous_track
             return
 
-        self.speak("I can open, close apps, and control media.")
+        self.speak("I can open, close apps, search, and control media.")
 
     # -------------------------
     # Main loop
@@ -189,24 +243,16 @@ class ALAssistant:
 
     def run(self):
         self.speak("AL is ready.")
-
         while self.running:
             if time.time() - self.last_active > IDLE_TIMEOUT:
                 self.speak("Going idle.")
                 break
-
             try:
                 cmd = input("AL > ").strip()
-                if not cmd:
-                    continue
-
-                for expanded in self.expand_repetitions(cmd):
-                    if self.running:
-                        self.handle(expanded)
-
+                if cmd:
+                    self.handle(cmd)
             except (EOFError, KeyboardInterrupt):
                 break
-
         self.speak("Goodbye.")
 
 
