@@ -52,6 +52,8 @@ else:
 
     def pause():
         _playerctl("pause")
+    def stop():
+        _playerctl("pause")
 
     def play_pause():
         _playerctl("play-pause")
