@@ -5,19 +5,22 @@ import re
 import urllib.parse
 import difflib
 import os
-import al_device
 
-
-
-from al_apps import open_app, open_url, close_app, open_url_in_app
 import al_media
+import al_device
+from al_apps import open_app, open_url, close_app, open_url_in_app
 
-IDLE_TIMEOUT = 120
+# -------------------------
+# Configuration
+# -------------------------
+
+IDLE_TIMEOUT = 120  # seconds
 
 ALIASES = {
     "chrome": "Google Chrome",
     "google chrome": "Google Chrome",
     "brave": "Brave Browser",
+    "brave browser": "Brave Browser",
     "spotify": "Spotify",
     "browser": "Google Chrome",
 }
@@ -40,12 +43,17 @@ NUMBER_WORDS = {
     "five": 5,
 }
 
+# -------------------------
+# Assistant
+# -------------------------
 
 class ALAssistant:
     def __init__(self):
         self.system = platform.system().lower()
-        self.last_active = time.time()
         self.running = True
+
+        # ---- IDLE CONTROL ----
+        self.last_active = time.time()
 
         # ---- CONTEXT MEMORY ----
         self.last_app = None
@@ -57,7 +65,7 @@ class ALAssistant:
     # -------------------------
 
     def touch(self):
-        """Update activity timestamp ONLY when something meaningful happens"""
+        """Only call when something *actually happens*"""
         self.last_active = time.time()
 
     def speak(self, text):
@@ -90,7 +98,7 @@ class ALAssistant:
     def extract_count(self, text):
         words = text.split()
         count = 1
-        for w in words:
+        for w in list(words):
             if w.isdigit():
                 count = int(w)
                 words.remove(w)
@@ -117,38 +125,6 @@ class ALAssistant:
             self.running = False
             self.speak("Goodbye.")
             return
-        # --- DEVICE / SETTINGS ---
-        if text in ("open settings", "settings"):
-            self.speak("Opening system settings")
-            al_device.open_settings()
-            return
-
-        if text in (
-            "open location settings",
-            "location settings",
-            "privacy location"
-        ):
-            self.speak("Opening location services settings")
-            al_device.open_location_settings()
-            return
-
-        if text in (
-            "check for updates",
-            "check updates",
-            "software update",
-            "system update"
-        ):
-            self.speak("Checking for system updates")
-            al_device.check_for_updates()
-            return
-
-        if text in (
-            "open update settings",
-            "open software update"
-        ):
-            self.speak("Opening software update settings")
-            al_device.open_update_settings()
-            return
 
         # --- CLEAR ---
         if text == "clear":
@@ -156,7 +132,38 @@ class ALAssistant:
             os.system("clear" if self.system != "windows" else "cls")
             return
 
-        # --- SEARCH FOR (contextual)  ✅ NEW ---
+        # -------------------------
+        # DEVICE / SETTINGS
+        # -------------------------
+
+        if text in ("open settings", "settings"):
+            self.touch()
+            self.speak("Opening system settings")
+            al_device.open_settings()
+            return
+
+        if text in ("open location settings", "location settings"):
+            self.touch()
+            self.speak("Opening location services settings")
+            al_device.open_location_settings()
+            return
+
+        if text in ("check for updates", "check updates", "system update"):
+            self.touch()
+            self.speak("Checking for system updates")
+            al_device.check_for_updates()
+            return
+
+        if text in ("open software update", "open update settings"):
+            self.touch()
+            self.speak("Opening software update settings")
+            al_device.open_update_settings()
+            return
+
+        # -------------------------
+        # SEARCH (contextual)
+        # -------------------------
+
         if text.startswith("search for"):
             query = text.replace("search for", "", 1).strip()
             if not self.last_app:
@@ -164,8 +171,8 @@ class ALAssistant:
                 return
 
             self.last_search = (
-                f"https://www.google.com/search?q="
-                f"{urllib.parse.quote_plus(query)}"
+                "https://www.google.com/search?q="
+                + urllib.parse.quote_plus(query)
             )
 
             self.touch()
@@ -173,9 +180,8 @@ class ALAssistant:
             open_url_in_app(self.last_app, self.last_search)
             return
 
-        # --- SEARCH AGAIN ---
         if text in ("search again", "search it again"):
-            if self.last_search and self.last_app:
+            if self.last_app and self.last_search:
                 self.touch()
                 self.speak("Searching again")
                 for _ in range(count):
@@ -184,7 +190,10 @@ class ALAssistant:
                 self.speak("Nothing to search again.")
             return
 
-        # --- CLOSE ---
+        # -------------------------
+        # CLOSE APP
+        # -------------------------
+
         if text.startswith("close"):
             target = text.replace("close", "", 1).strip() or self.last_app
             if not target:
@@ -198,7 +207,10 @@ class ALAssistant:
             close_app(app)
             return
 
-        # --- OPEN / OPEN + SEARCH ---
+        # -------------------------
+        # OPEN / OPEN + SEARCH
+        # -------------------------
+
         if text.startswith(("open", "go to")):
             target = (
                 text.replace("open", "", 1)
@@ -213,8 +225,8 @@ class ALAssistant:
 
                 self.last_app = app
                 self.last_search = (
-                    f"https://www.google.com/search?q="
-                    f"{urllib.parse.quote_plus(query)}"
+                    "https://www.google.com/search?q="
+                    + urllib.parse.quote_plus(query)
                 )
 
                 self.touch()
@@ -231,7 +243,10 @@ class ALAssistant:
             open_app(app)
             return
 
-        # --- PLAY MUSIC ---
+        # -------------------------
+        # MEDIA
+        # -------------------------
+
         if text.startswith("play"):
             self.touch()
             self.speak("Playing music")
@@ -241,7 +256,6 @@ class ALAssistant:
             self.last_media_action = al_media.play
             return
 
-        # --- MEDIA CONTROLS ---
         if text in ("pause", "stop"):
             self.touch()
             for _ in range(count):
@@ -270,7 +284,11 @@ class ALAssistant:
             self.last_media_action = al_media.previous_track
             return
 
-        self.speak("I can open, close apps, search, and control media.")
+        # -------------------------
+        # FALLBACK
+        # -------------------------
+
+        self.speak("I can open, close apps, search, control media, and manage system settings.")
 
     # -------------------------
     # Main loop
