@@ -5,6 +5,9 @@ import re
 import urllib.parse
 import difflib
 import os
+import al_device
+
+
 
 from al_apps import open_app, open_url, close_app, open_url_in_app
 import al_media
@@ -113,6 +116,38 @@ class ALAssistant:
             self.touch()
             self.running = False
             self.speak("Goodbye.")
+            return
+        # --- DEVICE / SETTINGS ---
+        if text in ("open settings", "settings"):
+            self.speak("Opening system settings")
+            al_device.open_settings()
+            return
+
+        if text in (
+            "open location settings",
+            "location settings",
+            "privacy location"
+        ):
+            self.speak("Opening location services settings")
+            al_device.open_location_settings()
+            return
+
+        if text in (
+            "check for updates",
+            "check updates",
+            "software update",
+            "system update"
+        ):
+            self.speak("Checking for system updates")
+            al_device.check_for_updates()
+            return
+
+        if text in (
+            "open update settings",
+            "open software update"
+        ):
+            self.speak("Opening software update settings")
+            al_device.open_update_settings()
             return
 
         # --- CLEAR ---
