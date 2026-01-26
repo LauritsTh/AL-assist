@@ -379,3 +379,4 @@ class ALAssistant:
 
 if __name__ == "__main__":
     ALAssistant().run()
+#test
