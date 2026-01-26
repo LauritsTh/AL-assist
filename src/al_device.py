@@ -84,3 +84,10 @@ def open_update_settings():
         ])
     elif SYSTEM == "linux":
         _run(["gnome-control-center", "updates"])
+def location_services_state():
+    """
+    macOS does not reliably expose Location Services state.
+    Returns 'unknown' on purpose.
+    """
+    return "unknown"
+
